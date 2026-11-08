@@ -3,7 +3,7 @@ import {Client,GatewayIntentBits,Events,REST,Routes,SlashCommandBuilder,EmbedBui
 import {createClient} from '@supabase/supabase-js';
 const required=['DISCORD_TOKEN','DISCORD_CLIENT_ID','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY'];
 for(const k of required)if(!process.env[k])throw new Error('Missing required environment variable: '+k);
-const portalUrl=(process.env.PORTAL_URL||'https://bank-regensburg.vercel.app').replace(/\\/$/,'');
+const portalUrl=(process.env.PORTAL_URL||'https://bank-regensburg.vercel.app').replace(/\/$/,'');
 const db=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
 const client=new Client({intents:[GatewayIntentBits.Guilds]});
 const commands=[new SlashCommandBuilder().setName('link').setDescription('Link your Discord identity to your Bank Regensburg membership').addStringOption(o=>o.setName('code').setDescription('One-time code from your member portal').setRequired(true)),new SlashCommandBuilder().setName('bank-status').setDescription('View the bank clearing schedule'),new SlashCommandBuilder().setName('my-account').setDescription('Show your linked virtual account'),new SlashCommandBuilder().setName('clearing-queue').setDescription('View the pending cheque queue (authorised staff only)')].map(x=>x.toJSON());
