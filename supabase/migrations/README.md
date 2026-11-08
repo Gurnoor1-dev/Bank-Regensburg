@@ -1,0 +1,3 @@
+-- Bank Regensburg core schema. Applied to project pfcmwxkphcgmupiltjti.
+-- See Supabase migration history for the full ordered migration set.
+-- This repository's database migrations are intentionally maintained as SQL files.
