@@ -1,72 +1,72 @@
 # Bank Regensburg
 
-A virtual banking network for the Infinite Flight community. This repository currently contains the public-facing website foundation and the proposed product rules.
+A community-operated virtual banking institution for the Infinite Flight ecosystem. The application includes a public institutional website, authenticated member portal, staff cheque-clearing desk, Supabase banking database and a separate Discord bot.
 
-> **Important:** Bank Regensburg is fictional, community-operated and uses virtual currency only. It is not a licensed bank, does not accept real deposits, and must never request real banking credentials or payment-card details.
+> **Important:** Bank Regensburg is fictional and uses virtual currency only (BRV). It is not a licensed bank, does not accept real deposits, and must never request real banking credentials or payment-card details.
 
-## Run locally
+## Application structure
 
-```bash
-npm install
-npm run dev
-```
+- Website: React + Vite, including /portal member access and /staff clearing desk.
+- Identity and data: Supabase Auth + PostgreSQL with Row Level Security.
+- Discord integration: Node.js 20+ bot in discord-bot/.
+- Ledger: append-only double-entry entries. Browser clients cannot directly write balances.
+- Currency: BRV, a fictional internal unit with no real-world monetary value.
 
-Create a production build with `npm run build`.
+## Website setup
 
-## Current scope
+Run npm install, copy .env.example to .env.local, add the Supabase URL and publishable key, then run npm run dev. Production builds use npm run build.
 
-- Responsive public website explaining the institution, services and operating model.
-- Public disclosure that the project is virtual and not a real financial institution.
-- No real account credentials, cheque data or balances are collected by this static website.
-- Member portal, staff console, Discord bot and ledger are planned backend phases, not simulated in this first foundation.
+Vercel production project: bank-regensburg. The Vite environment variables VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are configured for production, preview and development. The service-role key is never used in the browser.
 
-## Recommended system architecture
+## Discord bot
 
-- **Web application:** React + Vite, deployed on Vercel.
-- **Identity and data:** Supabase Auth + PostgreSQL with Row Level Security (RLS).
-- **Discord integration:** a server-side bot/service only. Keep the Discord bot token and Supabase service-role key in server environment secrets; never in browser code.
-- **Financial ledger:** append-only, double-entry journal. Never let a browser directly edit an account balance.
-- **Cheque clearing:** private cheque record, immutable submission snapshot, staff decision, idempotent settlement transaction and audit event.
-- **Scheduled operations:** a server-side banking calendar and UTC cut-off processor; do not rely on a browser clock.
+Follow discord-bot/Guide.md. Upload only the discord-bot directory to your bot host, configure its environment variables from discord-bot/.env.example, run npm install, npm run register and npm start. Bot token and Supabase service-role key belong only in the host's encrypted secret manager.
 
-## Product rules to settle before enabling money movement
+Commands: /link, /my-account, /bank-status and /clearing-queue. Account and staff replies are ephemeral. The bot polls the Supabase notification outbox and privately notifies linked members and staff. Discord is not used as a login credential; the portal issues a hashed, one-time code which the bot redeems.
 
-1. Define the virtual currency unit, opening balances, maximum balances and whether negative balances are forbidden.
-2. Publish the airline allocation formula, measurement period, data source and manual adjustment policy.
-3. Define account ownership and roles: pilot, company officer, teller/clearing staff, auditor and super-admin.
-4. Require verified Discord identity, but use a secure web sign-in (OAuth or email magic link) for the portal. Discord DMs are notifications, not authentication.
-5. Give every cheque a unique unpredictable public reference and a private, authenticated detail view. Do not send cheque details or bearer links in Discord embeds.
-6. Define cheque lifecycle: draft → submitted → queued → approved/rejected → settled/voided. A submitted cheque must not be editable.
-7. At settlement, lock both accounts, verify available funds, write debit and credit journal entries atomically, and prevent duplicate settlement with an idempotency key.
-8. Define clearing days using an explicit holiday calendar and timezone UTC. A 16:30Z cut-off is not the same as the local browser time.
-9. Define dispute, stop-payment, lost cheque book, account suspension, reversal and correction procedures.
-10. Define staff separation of duties, limits, approval thresholds and immutable audit retention.
+## Supabase
 
-## Suggested database entities
+Project: https://pfcmwxkphcgmupiltjti.supabase.co
 
-- `profiles` — user identity and account status
-- `bank_accounts` — individual/company account metadata
-- `account_memberships` — company officers and delegated permissions
-- `ledger_transactions` + `ledger_entries` — immutable double-entry ledger
-- `cheque_books` + `cheques` — numbered instruments and state transitions
-- `clearing_sessions` + `staff_decisions` — daily workflow
-- `allocation_runs` — published company capital allocations and input snapshots
-- `bank_holidays` — non-clearing dates
-- `audit_events` — security-sensitive actions
-- `discord_links` + `notification_outbox` — verified Discord identities and safe notifications
+The ordered migrations are stored in supabase/migrations/. They create profiles, accounts, memberships, double-entry ledger, cheque books, cheques, staff decisions, holiday calendar, allocation runs, audit log, notification outbox and Discord link codes. They also create the profile-on-signup trigger and the secured cheque workflow functions.
 
-## Security baseline
+### Cheque flow
 
-- Enable RLS on every exposed table; deny by default.
-- Use least-privilege policies and server-side authorization for all privileged actions.
-- Keep service-role keys, bot tokens and signing secrets server-side only.
-- Use MFA for staff and administrators.
-- Rate-limit sign-in, cheque creation and sensitive actions.
-- Use CSRF protection where cookie sessions are used; validate all inputs server-side.
-- Store no passwords, card details or real-world bank account information.
-- Log actor, timestamp, action, target and outcome; never log secrets.
-- Test authorization with separate pilot, company officer, staff and administrator accounts before launch.
+1. An authorised member creates a draft cheque from an issued cheque book.
+2. Submission checks membership, account status and available funds, reserves funds against other queued cheques, and creates a staff notification.
+3. Active clearing staff review queued cheques before 16:30 UTC on a weekday that is not in the bank holiday table.
+4. Approval posts an atomic debit and credit with a cheque-specific idempotency key. Rejection is recorded. The action and decision are audited.
 
-## Environment
+Personal cheque books contain 30 instruments; corporate books contain 150. The database enforces each book's instrument limit. Cheque IDs are generated server-side.
 
-No secrets are required for the public website. Backend environment variables should be added only when the Supabase project and server deployment are configured. Never commit a populated `.env` file.
+## First administrator bootstrap
+
+1. Register through /portal and confirm the email address.
+2. In Supabase SQL Editor, promote the exact Auth user UUID:
+
+    update public.profiles set role='admin', status='active' where id='YOUR_AUTH_USER_UUID';
+
+3. Create an active treasury and member/company accounts, account memberships and cheque books through a trusted admin provisioning workflow. Fund accounts only through balanced ledger transactions. Do not manually edit account balances.
+4. Add bank holidays using UTC dates. Promote approved staff profiles to clearing_staff, auditor or admin as appropriate.
+5. Link each staff Discord identity through the member portal and /link.
+
+The member-facing app intentionally does not expose account creation, membership changes, staff role promotion, cheque-book issuance or treasury funding. These high-risk admin operations must remain restricted to trusted operators and be added as audited admin workflows before community launch.
+
+## Security notes
+
+- RLS is enabled on all public banking tables. No anonymous table access is granted.
+- SECURITY DEFINER functions have explicit grants and validate the caller/role where required. Balance reads are restricted to account members and active staff.
+- Never expose the Supabase service-role key to the browser or commit populated environment files.
+- Enable MFA for all bank administrators and clearing staff.
+- One-time Discord link codes are hashed at rest and expire after 10 minutes.
+- Discord DMs are notifications only; the authenticated portal is the source of truth.
+- The bot's clearing queue is read-only. Approvals and settlements happen in the authenticated staff console.
+- Test using separate pilot, company officer, clearing staff and admin accounts before inviting members.
+
+## Known rollout tasks
+
+- Configure Supabase Auth email confirmation and production SMTP.
+- Create the first admin profile, treasury account, accounts, memberships and cheque books.
+- Deploy the Discord bot using discord-bot/Guide.md.
+- Add the bank's custom domain to Vercel when ready.
+- Perform role-based end-to-end tests with test accounts and test balances before issuing any virtual currency.
