@@ -60,9 +60,9 @@ set role = 'admin', status = 'active'
 where id = 'YOUR_AUTH_USER_UUID';
 ```
 
-3. Promote your profile to active admin, then open /admin. Create an operating treasury account and issue its initial virtual supply using the controlled issuance tool. Create personal/corporate accounts, assign members, issue cheque books, and configure bank holidays from the administration console. Do not manually edit balances; balances are calculated from the ledger.
-4. Create member/company accounts and memberships, issue 30-cheque personal books or 150-cheque corporate books, and assign active staff roles. The current starter portal intentionally does not expose account creation, book issuance, treasury funding, or role promotion to public users.
-5. For every staff member, link their Discord identity and set the approved role/status in Supabase.
+3. Open /admin. Create an operating treasury account, issue its initial virtual supply using the controlled issuance tool, create personal/corporate accounts, assign members, issue cheque books, and configure bank holidays. Do not manually edit balances; balances are calculated from the ledger.
+4. Use the profile controls in /admin to activate approved members and assign clearing_staff or auditor roles. Each staff member should generate a one-time code in /portal and redeem it with /link.
+5. Test the full flow with separate member, company officer, clearing staff and auditor accounts before inviting the community.
 
 ## 6. Cheque clearing rules
 
