@@ -29,8 +29,8 @@ function App(){
   return <div className="site-shell">
     <div className="topline"><span className="live-dot"/> VIRTUAL BANKING NETWORK <span className="top-sep">/</span> BUILT FOR INFINITE FLIGHT</div>
     <header className="header">
-      <a className="brand" href="#" aria-label="Bank Regensburg home"><span className="brand-mark">R</span><span className="brand-copy"><strong>BANK REGENSBURG</strong><small>THE AVIATION BANKING NETWORK</small></span></a>
-      <nav className={menuOpen?'nav nav-open':'nav'}>{nav.map(([label,href])=><a key={label} href={href} onClick={closeMenu}>{label}</a>)}<a className="nav-cta" href="#access" onClick={closeMenu}>Portal access <ArrowUpRight size={15}/></a></nav>
+      <a className="brand" href="#" aria-label="Bank Regensburg home"><span className="brand-mark"><img src="/images/BrandAssets/bank-regensburg-logo.png" alt="Bank Regensburg"/></span><span className="brand-copy"><strong>BANK REGENSBURG</strong><small>THE AVIATION BANKING NETWORK</small></span></a>
+      <nav className={menuOpen?'nav nav-open':'nav'}>{nav.map(([label,href])=><a key={label} href={href} onClick={closeMenu}>{label}</a>)}<a className="nav-cta" href="/portal" onClick={closeMenu}>Member portal <ArrowUpRight size={15}/></a></nav>
       <button className="menu-toggle" onClick={()=>setMenuOpen(!menuOpen)} aria-label="Toggle navigation">{menuOpen?<X/>:<Menu/>}</button>
     </header>
     <main>
@@ -40,7 +40,7 @@ function App(){
           <div className="eyebrow"><span className="eyebrow-line"/> A BANK BUILT AROUND AVIATION</div>
           <h1>Where virtual<br/><em>operations</em> meet<br/>real-world banking.</h1>
           <p className="hero-lede">A complete banking framework for the Infinite Flight community. Accounts, company capital, crew payments and cheque clearing — brought together under one trusted institution.</p>
-          <div className="hero-actions"><a className="button button-primary" href="#model">Explore the bank <ArrowRight size={17}/></a><a className="button button-quiet" href="#access">Portal information <ArrowUpRight size={16}/></a></div>
+          <div className="hero-actions"><a className="button button-primary" href="#model">Explore the bank <ArrowRight size={17}/></a><a className="button button-quiet" href="/portal">Member portal <ArrowUpRight size={16}/></a></div>
           <div className="hero-footnote"><ShieldCheck size={15}/> COMMUNITY-OPERATED <span/> VIRTUAL CURRENCY ONLY</div>
         </div>
         <div className="hero-visual">
@@ -68,7 +68,7 @@ function App(){
       <section className="faq-section" id="about"><div className="section-kicker">05 — THE DETAILS</div><div className="faq-layout"><div><h2>Good to<br/><em>know.</em></h2><p>Clear rules make a stronger institution. Here are the first things every member should know.</p></div><div className="faq-list">{faqs.map(([q,a],i)=><div className={'faq-item '+(faqOpen===i?'faq-active':'')} key={q}><button onClick={()=>setFaqOpen(faqOpen===i?-1:i)}><span>{q}</span><ChevronDown size={18}/></button>{faqOpen===i&&<p>{a}</p>}</div>)}</div></div></section>
       <section className="access-section" id="access"><div className="access-emblem">R</div><div className="section-kicker light-kicker">THE NEXT DEPARTURE</div><h2>Your place in the<br/><em>network starts here.</em></h2><p>Account onboarding and member services will be introduced in phases. Join the official community for launch announcements and assistance.</p><button className="button button-light" onClick={()=>setNotice(true)}>Onboarding coming soon <ArrowUpRight size={17}/></button>{notice&&<div className="notice"><Check size={15}/> Portal access is not open yet. Follow the official Discord for launch updates.</div>}<small className="access-disclaimer">Bank Regensburg is a fictional, community-run virtual banking project. No real money or regulated financial services are involved.</small></section>
     </main>
-    <footer className="footer"><a className="brand footer-brand" href="#"><span className="brand-mark">R</span><span className="brand-copy"><strong>BANK REGENSBURG</strong><small>THE AVIATION BANKING NETWORK</small></span></a><span className="footer-copy">© 2026 BANK REGENSBURG · A VIRTUAL INSTITUTION</span><a href="#top" onClick={e=>{e.preventDefault();window.scrollTo({top:0,behavior:'smooth'})}}>BACK TO TOP ↑</a></footer>
+    <footer className="footer"><a className="brand footer-brand" href="#"><span className="brand-mark"><img src="/images/BrandAssets/bank-regensburg-logo.png" alt="Bank Regensburg"/></span><span className="brand-copy"><strong>BANK REGENSBURG</strong><small>THE AVIATION BANKING NETWORK</small></span></a><span className="footer-copy">© 2026 BANK REGENSBURG · A VIRTUAL INSTITUTION</span><a href="#top" onClick={e=>{e.preventDefault();window.scrollTo({top:0,behavior:'smooth'})}}>BACK TO TOP ↑</a></footer>
   </div>
 }
 export default App;
