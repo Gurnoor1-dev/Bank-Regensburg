@@ -1,0 +1,22 @@
+create or replace function public.admin_seed_treasury(p_treasury_id uuid,p_amount numeric,p_note text,p_idempotency_key text) returns uuid language plpgsql security definer set search_path=public as $$ declare source_id uuid; tx uuid; begin
+ if not public.is_admin() then raise exception 'Administrator access required'; end if;
+ if p_amount<=0 or p_amount>1000000000 or length(coalesce(p_idempotency_key,''))<8 or length(trim(coalesce(p_note,'')))=0 then raise exception 'Invalid opening issue'; end if;
+ if not exists(select 1 from public.bank_accounts where id=p_treasury_id and kind='treasury' and status='active') then raise exception 'Active treasury account required'; end if;
+ select id into tx from public.ledger_transactions where idempotency_key=p_idempotency_key; if tx is not null then return tx; end if;
+ perform pg_advisory_xact_lock(hashtext('bank-regensburg-virtual-issuance'));
+ select id into tx from public.ledger_transactions where idempotency_key=p_idempotency_key; if tx is not null then return tx; end if;
+ select id into source_id from public.bank_accounts where name='System virtual issuance counterparty' and kind='treasury' limit 1 for update;
+ if source_id is null then insert into public.bank_accounts(name,kind,status) values('System virtual issuance counterparty','treasury','active') returning id into source_id; end if;
+ if source_id=p_treasury_id then raise exception 'Select the operating treasury account'; end if;
+ insert into public.ledger_transactions(description,idempotency_key,created_by) values(left('Virtual supply issuance: '||p_note,160),p_idempotency_key,auth.uid()) returning id into tx;
+ insert into public.ledger_entries(transaction_id,account_id,amount) values(tx,source_id,-p_amount),(tx,p_treasury_id,p_amount);
+ insert into public.audit_events(actor_id,action,target_type,target_id,metadata) values(auth.uid(),'virtual_supply_issued','account',p_treasury_id::text,jsonb_build_object('amount',p_amount,'note',p_note,'transaction_id',tx)); return tx; end $$;
+revoke all on function public.admin_set_profile(uuid,text,public.bank_role,text) from public,anon,authenticated;
+revoke all on function public.admin_create_account(text,public.account_kind,uuid) from public,anon,authenticated;
+revoke all on function public.admin_add_account_member(uuid,uuid,text) from public,anon,authenticated;
+revoke all on function public.admin_issue_cheque_book(uuid,integer) from public,anon,authenticated;
+revoke all on function public.admin_post_transfer(uuid,uuid,numeric,text,text) from public,anon,authenticated;
+revoke all on function public.admin_add_holiday(date,text) from public,anon,authenticated;
+revoke all on function public.admin_record_allocation(uuid,uuid,integer,integer,integer,numeric,text,text) from public,anon,authenticated;
+revoke all on function public.admin_seed_treasury(uuid,numeric,text,text) from public,anon,authenticated;
+grant execute on function public.admin_set_profile(uuid,text,public.bank_role,text),public.admin_create_account(text,public.account_kind,uuid),public.admin_add_account_member(uuid,uuid,text),public.admin_issue_cheque_book(uuid,integer),public.admin_post_transfer(uuid,uuid,numeric,text,text),public.admin_add_holiday(date,text),public.admin_record_allocation(uuid,uuid,integer,integer,integer,numeric,text,text),public.admin_seed_treasury(uuid,numeric,text,text) to authenticated;
