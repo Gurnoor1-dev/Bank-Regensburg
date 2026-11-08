@@ -6,7 +6,7 @@ A community-operated virtual banking institution for the Infinite Flight ecosyst
 
 ## Application structure
 
-- Website: React + Vite, including /portal member access and /staff clearing desk.
+- Website: React + Vite, including /portal member access, /staff clearing desk and /admin provisioning console.
 - Identity and data: Supabase Auth + PostgreSQL with Row Level Security.
 - Discord integration: Node.js 20+ bot in discord-bot/.
 - Ledger: append-only double-entry entries. Browser clients cannot directly write balances.
