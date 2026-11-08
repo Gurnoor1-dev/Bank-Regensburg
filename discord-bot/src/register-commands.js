@@ -1,0 +1,5 @@
+import 'dotenv/config';
+import {REST,Routes,SlashCommandBuilder} from 'discord.js';
+for(const k of ['DISCORD_TOKEN','DISCORD_CLIENT_ID'])if(!process.env[k])throw new Error('Missing '+k);
+const commands=[new SlashCommandBuilder().setName('link').setDescription('Link your Discord identity to your bank membership').addStringOption(o=>o.setName('code').setDescription('One-time portal code').setRequired(true)),new SlashCommandBuilder().setName('bank-status').setDescription('View the bank clearing schedule'),new SlashCommandBuilder().setName('my-account').setDescription('Show your linked virtual account'),new SlashCommandBuilder().setName('clearing-queue').setDescription('View the pending cheque queue (staff only)')].map(c=>c.toJSON());
+const rest=new REST({version:'10'}).setToken(process.env.DISCORD_TOKEN);const route=process.env.DISCORD_GUILD_ID?Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID,process.env.DISCORD_GUILD_ID):Routes.applicationCommands(process.env.DISCORD_CLIENT_ID);await rest.put(route,{body:commands});console.log('Registered '+commands.length+' Bank Regensburg commands.');
