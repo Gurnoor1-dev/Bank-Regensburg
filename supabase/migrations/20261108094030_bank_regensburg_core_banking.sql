@@ -1,0 +1,73 @@
+
+create extension if not exists pgcrypto;
+create type public.account_kind as enum ('personal','corporate','treasury');
+create type public.account_status as enum ('pending','active','frozen','closed');
+create type public.cheque_status as enum ('draft','submitted','queued','approved','rejected','settled','voided');
+create type public.bank_role as enum ('member','company_officer','clearing_staff','auditor','admin');
+create table public.profiles(id uuid primary key references auth.users(id) on delete cascade,display_name text not null default '',discord_user_id text unique,discord_username text,role public.bank_role not null default 'member',status text not null default 'pending' check(status in ('pending','active','suspended')),created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create table public.bank_accounts(id uuid primary key default gen_random_uuid(),account_number text not null unique default ('BR-'||upper(substr(encode(gen_random_bytes(8),'hex'),1,12))),name text not null,kind public.account_kind not null default 'personal',status public.account_status not null default 'pending',currency text not null default 'BRV' check(currency='BRV'),created_by uuid references auth.users(id),created_at timestamptz not null default now());
+create table public.account_memberships(account_id uuid not null references public.bank_accounts(id) on delete cascade,user_id uuid not null references auth.users(id) on delete cascade,permission text not null default 'view' check(permission in ('view','operate','manage')),created_at timestamptz not null default now(),primary key(account_id,user_id));
+create table public.ledger_transactions(id uuid primary key default gen_random_uuid(),reference text not null unique default ('TX-'||upper(substr(encode(gen_random_bytes(8),'hex'),1,12))),description text not null,status text not null default 'posted' check(status='posted'),idempotency_key text unique,created_by uuid references auth.users(id),created_at timestamptz not null default now());
+create table public.ledger_entries(id bigint generated always as identity primary key,transaction_id uuid not null references public.ledger_transactions(id),account_id uuid not null references public.bank_accounts(id),amount numeric(18,2) not null check(amount<>0),created_at timestamptz not null default now());
+create index ledger_entries_account_created_idx on public.ledger_entries(account_id,created_at desc);
+create table public.cheque_books(id uuid primary key default gen_random_uuid(),account_id uuid not null references public.bank_accounts(id),book_size integer not null check(book_size in (30,150)),serial_prefix text not null unique,issued_at timestamptz not null default now(),issued_by uuid references auth.users(id));
+create table public.cheques(id uuid primary key default gen_random_uuid(),cheque_number text not null unique,book_id uuid not null references public.cheque_books(id),account_id uuid not null references public.bank_accounts(id),payee_account_id uuid not null references public.bank_accounts(id),amount numeric(18,2) not null check(amount>0),memo text not null default '',status public.cheque_status not null default 'draft',submitted_by uuid references auth.users(id),submitted_at timestamptz,reviewed_by uuid references auth.users(id),reviewed_at timestamptz,decision_note text,settled_transaction_id uuid references public.ledger_transactions(id),created_at timestamptz not null default now(),constraint cheque_distinct_accounts check(account_id<>payee_account_id));
+create index cheques_queue_idx on public.cheques(status,submitted_at);
+create table public.staff_decisions(id uuid primary key default gen_random_uuid(),cheque_id uuid not null references public.cheques(id),staff_id uuid not null references auth.users(id),decision text not null check(decision in ('approve','reject')),note text not null default '',created_at timestamptz not null default now());
+create table public.bank_holidays(holiday_date date primary key,name text not null);
+create table public.allocation_runs(id uuid primary key default gen_random_uuid(),airline_account_id uuid not null references public.bank_accounts(id),pilot_count integer not null check(pilot_count>=0),fleet_count integer not null check(fleet_count>=0),route_count integer not null check(route_count>=0),amount numeric(18,2) not null check(amount>0),notes text not null default '',created_by uuid references auth.users(id),created_at timestamptz not null default now());
+create table public.audit_events(id bigint generated always as identity primary key,actor_id uuid references auth.users(id),action text not null,target_type text not null,target_id text,outcome text not null default 'success',metadata jsonb not null default '{}'::jsonb,created_at timestamptz not null default now());
+create table public.notification_outbox(id bigint generated always as identity primary key,recipient_user_id uuid references auth.users(id),event_type text not null,payload jsonb not null default '{}'::jsonb,delivered_at timestamptz,created_at timestamptz not null default now());
+create function public.is_staff() returns boolean language sql stable security definer set search_path=public as $$ select exists(select 1 from public.profiles p where p.id=auth.uid() and p.status='active' and p.role in ('clearing_staff','auditor','admin')) $$;
+create function public.is_admin() returns boolean language sql stable security definer set search_path=public as $$ select exists(select 1 from public.profiles p where p.id=auth.uid() and p.status='active' and p.role='admin') $$;
+create function public.has_account_access(aid uuid,min_permission text default 'view') returns boolean language sql stable security definer set search_path=public as $$ select exists(select 1 from public.account_memberships m where m.account_id=aid and m.user_id=auth.uid() and (case min_permission when 'manage' then m.permission='manage' when 'operate' then m.permission in ('operate','manage') else true end)) $$;
+create function public.account_balance(aid uuid) returns numeric language sql stable security definer set search_path=public as $$ select coalesce(sum(e.amount),0) from public.ledger_entries e join public.ledger_transactions t on t.id=e.transaction_id where e.account_id=aid and t.status='posted' $$;
+create function public.post_ledger_transaction(p_description text,p_debit_account uuid,p_credit_account uuid,p_amount numeric,p_idempotency_key text default null) returns uuid language plpgsql security definer set search_path=public as $$
+declare tx uuid; begin
+ if p_amount<=0 or p_debit_account=p_credit_account then raise exception 'Invalid transfer'; end if;
+ if p_idempotency_key is not null then select id into tx from public.ledger_transactions where idempotency_key=p_idempotency_key; if tx is not null then return tx; end if; end if;
+ perform 1 from public.bank_accounts where id in (p_debit_account,p_credit_account) order by id for update;
+ if (select status from public.bank_accounts where id=p_debit_account)<>'active' or (select status from public.bank_accounts where id=p_credit_account)<>'active' then raise exception 'Both accounts must be active'; end if;
+ if public.account_balance(p_debit_account)<p_amount then raise exception 'Insufficient available balance'; end if;
+ insert into public.ledger_transactions(description,idempotency_key,created_by) values(p_description,p_idempotency_key,auth.uid()) returning id into tx;
+ insert into public.ledger_entries(transaction_id,account_id,amount) values(tx,p_debit_account,-p_amount),(tx,p_credit_account,p_amount); return tx; end $$;
+create function public.submit_cheque(p_cheque uuid) returns public.cheques language plpgsql security definer set search_path=public as $$ declare c public.cheques; begin
+ select * into c from public.cheques where id=p_cheque for update;
+ if not found or not public.has_account_access(c.account_id,'operate') then raise exception 'Cheque not found or not authorised'; end if;
+ if c.status<>'draft' then raise exception 'Only draft cheques can be submitted'; end if;
+ if c.amount>public.account_balance(c.account_id) then raise exception 'Insufficient available balance'; end if;
+ update public.cheques set status='queued',submitted_by=auth.uid(),submitted_at=now() where id=p_cheque returning * into c;
+ insert into public.notification_outbox(recipient_user_id,event_type,payload) select p.id,'cheque_submitted',jsonb_build_object('cheque_id',c.id,'cheque_number',c.cheque_number) from public.profiles p where p.role in ('clearing_staff','admin') and p.status='active';
+ insert into public.audit_events(actor_id,action,target_type,target_id) values(auth.uid(),'cheque_submitted','cheque',c.id::text); return c; end $$;
+create function public.review_cheque(p_cheque uuid,p_decision text,p_note text default '') returns public.cheques language plpgsql security definer set search_path=public as $$ declare c public.cheques; tx uuid; begin
+ if not public.is_staff() or p_decision not in ('approve','reject') then raise exception 'Not authorised'; end if;
+ select * into c from public.cheques where id=p_cheque for update;
+ if not found or c.status<>'queued' then raise exception 'Cheque is not awaiting review'; end if;
+ if extract(isodow from now() at time zone 'UTC')>5 or exists(select 1 from public.bank_holidays where holiday_date=(now() at time zone 'UTC')::date) then raise exception 'Bank is closed today'; end if;
+ if (now() at time zone 'UTC')::time>=time '16:30' then raise exception 'Clearing cut-off has passed'; end if;
+ if p_decision='approve' then tx:=public.post_ledger_transaction('Cheque settlement '||c.cheque_number,c.account_id,c.payee_account_id,c.amount,'cheque:'||c.id::text); update public.cheques set status='settled',reviewed_by=auth.uid(),reviewed_at=now(),decision_note=p_note,settled_transaction_id=tx where id=p_cheque returning * into c;
+ else update public.cheques set status='rejected',reviewed_by=auth.uid(),reviewed_at=now(),decision_note=p_note where id=p_cheque returning * into c; end if;
+ insert into public.staff_decisions(cheque_id,staff_id,decision,note) values(c.id,auth.uid(),p_decision,coalesce(p_note,''));
+ insert into public.audit_events(actor_id,action,target_type,target_id,metadata) values(auth.uid(),'cheque_'||p_decision,'cheque',c.id::text,jsonb_build_object('note',p_note));
+ insert into public.notification_outbox(recipient_user_id,event_type,payload) values(c.submitted_by,'cheque_'||p_decision,jsonb_build_object('cheque_id',c.id,'cheque_number',c.cheque_number)); return c; end $$;
+create function public.create_cheque(p_book uuid,p_payee_account uuid,p_amount numeric,p_memo text default '') returns public.cheques language plpgsql security definer set search_path=public as $$ declare b public.cheque_books; c public.cheques; seq integer; begin
+ select * into b from public.cheque_books where id=p_book;
+ if not found or not public.has_account_access(b.account_id,'operate') then raise exception 'Cheque book not found or not authorised'; end if;
+ if p_amount<=0 or p_amount>10000000 then raise exception 'Invalid amount'; end if;
+ if not exists(select 1 from public.bank_accounts where id=p_payee_account and status='active') then raise exception 'Payee account unavailable'; end if;
+ select count(*)+1 into seq from public.cheques where book_id=p_book;
+ insert into public.cheques(cheque_number,book_id,account_id,payee_account_id,amount,memo) values(b.serial_prefix||'-'||lpad(seq::text,4,'0'),p_book,b.account_id,p_payee_account,p_amount,left(p_memo,160)) returning * into c; return c; end $$;
+alter table public.profiles enable row level security; alter table public.bank_accounts enable row level security; alter table public.account_memberships enable row level security; alter table public.ledger_transactions enable row level security; alter table public.ledger_entries enable row level security; alter table public.cheque_books enable row level security; alter table public.cheques enable row level security; alter table public.staff_decisions enable row level security; alter table public.bank_holidays enable row level security; alter table public.allocation_runs enable row level security; alter table public.audit_events enable row level security; alter table public.notification_outbox enable row level security;
+create policy profile_self_read on public.profiles for select to authenticated using(id=auth.uid() or public.is_staff());
+create policy account_member_read on public.bank_accounts for select to authenticated using(public.has_account_access(id) or public.is_staff());
+create policy memberships_read on public.account_memberships for select to authenticated using(user_id=auth.uid() or public.is_staff());
+create policy transactions_read on public.ledger_transactions for select to authenticated using(exists(select 1 from public.ledger_entries le where le.transaction_id=public.ledger_transactions.id and public.has_account_access(le.account_id)) or public.is_staff());
+create policy entries_read on public.ledger_entries for select to authenticated using(public.has_account_access(account_id) or public.is_staff());
+create policy books_read on public.cheque_books for select to authenticated using(public.has_account_access(account_id) or public.is_staff());
+create policy cheques_read on public.cheques for select to authenticated using(public.has_account_access(account_id) or public.has_account_access(payee_account_id) or public.is_staff());
+create policy decisions_read on public.staff_decisions for select to authenticated using(public.is_staff());
+create policy holidays_read on public.bank_holidays for select to authenticated using(true);
+create policy allocations_read on public.allocation_runs for select to authenticated using(public.has_account_access(airline_account_id) or public.is_staff());
+create policy audit_admin_read on public.audit_events for select to authenticated using(public.is_admin());
+create policy notifications_read on public.notification_outbox for select to authenticated using(recipient_user_id=auth.uid() or public.is_staff());
+grant select on public.profiles,public.bank_accounts,public.account_memberships,public.ledger_transactions,public.ledger_entries,public.cheque_books,public.cheques,public.staff_decisions,public.bank_holidays,public.allocation_runs,public.audit_events,public.notification_outbox to authenticated;
