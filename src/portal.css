@@ -3,3 +3,5 @@
 .portal-row .debit{color:#a04e45}.portal-row .credit{color:#4c7b57}
 
 .verify-payee{justify-self:start;padding:10px 13px;border:1px solid #c8b18e;background:#fff;color:#725b3c;cursor:pointer}.payee-verified{font-size:11px;color:#4d7958}
+
+.portal-success{margin:14px 0;padding:13px 15px;border:1px solid #b8c8b8;background:#edf3eb;color:#34523c;font-size:12px;line-height:1.65}
